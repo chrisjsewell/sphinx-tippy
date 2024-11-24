@@ -563,7 +563,28 @@ def fetch_doi_tips(app: Sphinx, data: dict[str, TippyPageData]) -> dict[str, str
         doi for page in data.values() for doi in page["dois"] if doi not in doi_cache
     }
     for doi in status_iterator(doi_fetch, "Fetching DOI tips", length=len(doi_fetch)):
-        url = f"{config.doi_api}{doi}"
+        # Resolve the RA from doi.org
+        url = (
+            "https://doi.org/api/handles/"
+            + doi.replace("https://doi.org/", "").split("/")[0]
+        )
+        api_url = config.doi_api
+        try:
+            authority = requests.get(url).json()["values"][0]["data"]["value"]
+            if authority == "10.SERV/DATACITE":
+                api_url = "https://api.datacite.org/dois/"
+            elif authority == "10.SERV/CROSSREF":
+                api_url = "https://api.crossref.org/works/"
+            else:
+                raise ValueError(f"Unknown DOI authority: {authority}")
+        except Exception as exc:
+            LOGGER.warning(
+                f"Could not fetch DOI authority for {doi}: {exc} [tippy.doi]",
+                type="tippy",
+                subtype="doi",
+            )
+            continue
+        url = f"{api_url}{doi}"
         try:
             data = requests.get(url).json()
         except Exception as exc:
